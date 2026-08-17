@@ -1,0 +1,9 @@
+pub const OPEN = "OPEN";
+pub const CLOSE = "CLOSE";
+pub const READ = "READ";
+pub const WRITE = "WRITE";
+pub const LSEEK = "LSEEK";
+pub const STAT = "STAT";
+pub const UNLINK = "UNLINK";
+pub const GETDIRENTRIES = "GETDIRENTRIES";
+pub const GETDIRTREE = "GETDIRTREE";

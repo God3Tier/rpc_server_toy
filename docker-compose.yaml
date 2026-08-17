@@ -1,0 +1,54 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: remote_server/Dockerfile
+    container_name: rpc-server
+    networks:
+      rpc-net:
+        ipv4_address:
+          172.28.0.10 # fixed, since the Zig client parses a
+          # literal IPv4 address (parseIp4), not
+          # a hostname -- see note below
+    ports:
+      - "15440:15440" # exposed to the host for local debugging, optional
+    environment:
+      - RUST_LOG=debug
+
+  client:
+    build:
+      context: .
+      dockerfile: library_client/Dockerfile
+    container_name: rpc-client
+    depends_on:
+      - server
+    networks:
+      - rpc-net
+    environment:
+      # Must be a literal dotted-decimal IP, matching server's fixed
+      # address above -- your client reads this straight into
+      # std.net.Address.parseIp4, which does not resolve hostnames.
+      - server15440=172.28.0.10
+      - serverport15440=15440
+    # Overridden per test run; see docker/client/run.sh
+    command: ["sleep", "infinity"]
+
+  mock:
+    build:
+      context: .
+      dockerfile: mock/Dockerfile
+    container_name: rpc-mock
+    depends_on:
+      - server
+    networks:
+      - rpc-net
+    environment:
+      - server15440=172.28.0.10
+      - serverport15440=15440
+
+networks:
+  rpc-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
