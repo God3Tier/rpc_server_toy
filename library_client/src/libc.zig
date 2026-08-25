@@ -48,7 +48,7 @@ pub fn read(fd: c_int, buf: [*]u8, count: usize) isize {
     return read_fn.?(fd, buf, count);
 }
 
-pub fn write(fd: c_int, data: [*]const u8, count: c_int) isize {
+pub fn write(fd: c_int, data: [*]const u8, count: usize) isize {
     if (write_fn == null) {
         const sym = c.dlsym(c.RTLD_NEXT, "write") orelse @panic("dlysm failed for write");
         write_fn = @ptrCast(@alignCast(sym));

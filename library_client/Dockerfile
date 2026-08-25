@@ -1,12 +1,9 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl xz-utils build-essential ca-certificates \
+    curl xz-utils build-essential ca-certificates python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Pin the exact 0.16.x release you're developing against so the container
-# always matches what you're running locally -- check ziglang.org/download
-# for the current 0.16.x tarball name/URL and fill it in here.
 ARG ZIG_VERSION=0.16.0
 ARG TARGETARCH
 RUN set -eux; \
@@ -24,11 +21,10 @@ RUN set -eux; \
 
 WORKDIR /work
 
-# Your Zig interposition library
 COPY library_client ./zig-client
 RUN cd zig-client && zig build
 
-ENV LD_LIBRARY_PATH=/work/lib
+COPY mock/ctypes_test.py ./ctypes_test.py
 
 COPY library_client/run.sh /usr/local/bin/run.sh
 RUN chmod +x /usr/local/bin/run.sh

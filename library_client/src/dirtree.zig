@@ -71,6 +71,6 @@ const DirTree = struct {
         for (0..root.num_subdirs) |i| {
             (root.children + i).free();
         }
-        root.deinit();
+        root.allocator.destroy(root);
     }
 };
