@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, mpsc};
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
 pub struct Threadpool {
-    workers: Vec<Workers>,
+    pub workers: Vec<Workers>,
     sender: Option<mpsc::Sender<Job>>,
 }
 

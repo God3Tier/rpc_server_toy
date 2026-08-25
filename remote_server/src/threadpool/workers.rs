@@ -9,23 +9,23 @@ pub struct Workers {
 
 impl Workers {
     pub fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Self {
-        let thread = thread::spawn(move || loop {
-            let message = receiver.lock().unwrap().recv();
-            match message {
-                Ok(job) => {job()}, 
+        let thread = thread::spawn(move || {
+            loop {
+                let message = receiver.lock().unwrap().recv();
+                match message {
+                    Ok(job) => job(),
 
-                Err(_) => {
-                    println!("Worker {id} disconnected; shutting down.");
-                    break;
+                    Err(_) => {
+                        println!("Worker {id} disconnected; shutting down.");
+                        break;
+                    }
                 }
             }
         });
 
-
         Self {
-            id, 
-            thread: Some(thread)
+            id,
+            thread: Some(thread),
         }
     }
-
 }
