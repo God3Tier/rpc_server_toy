@@ -1,46 +1,78 @@
-use std::{
-    collections::HashMap,
-    fs::{File, OpenOptions},
-    io::Write,
-    net::TcpStream,
-    os::unix::fs::OpenOptionsExt,
-    sync::{Arc, RwLock},
-};
+use std::{io::Write, net::TcpStream};
 
-use libc::{close, lseek, open, read, stat, unlink, write};
+use libc::{c_char, c_void};
 
-use libc::{c_char, c_void, mode_t, off_t};
-
-use crate::Error;
+use crate::{Error, dirtreenode::DirTreeNodes, lib};
 
 pub fn handle_open(path: &str, flags: i32, stream: &mut TcpStream) -> Result<(), Error> {
+    println!("Open called");
     let path = std::ffi::CString::new(path).unwrap();
 
     let fd = unsafe { libc::open(path.as_ptr() as *const c_char, flags) };
-
-    match stream.write_all(fd.to_string().as_bytes()) {
-        Ok(_) => Ok(()),
-        Err(err) => Err(format!("Unable to send msg, {}", err).into()),
+    if fd == -1 {
+        let err = std::io::Error::last_os_error();
+        println!("Result {fd}, errno: {err}");
+    } else {
+        println!("Result {fd}");
+    }
+    match stream.write_all(format!("{}\n", fd).as_bytes()) {
+        Ok(_) => {
+            // println!("Successfully written to client");
+            Ok(())
+        }
+        Err(err) => {
+            // eprintln!("Failed to write to router {err}". );
+            Err(format!("Unable to send msg, {}", err).into())
+        }
     }
 }
 
 pub fn handle_close(fd: i32, stream: &mut TcpStream) -> Result<(), Error> {
-    match stream.write_all("close".as_bytes()) {
+    println!("Close called");
+    let result = unsafe { libc::close(fd) };
+    match stream.write_all(format!("{}\n", result).as_bytes()) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Unable to send message {}", e).into()),
     }
 }
 
 pub fn handle_read(fd: i32, count: usize, stream: &mut TcpStream) -> Result<(), Error> {
-    match stream.write_all("read".as_bytes()) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("Unable to send message {}", e).into()),
+    println!("Read called");
+    let mut buffer = vec![0u8; super::BUFFER_SIZE];
+    let ptr = buffer.as_mut_ptr() as *mut libc::c_void;
+    let result = unsafe { libc::read(fd, ptr, count) };
+    println!("Read result {:?}", String::from_utf8(buffer.clone()[0..count].into())); 
+    if result == -1 {
+        let err = std::io::Error::last_os_error();
+        println!("errno: {err}");
+        match stream.write_all(format!("{}\n", result).as_bytes()) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unable to send message {}", e).into()),
+        }
+    } else {
+        match stream.write_all(&buffer[0..count]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unable to send message {}", e).into()),
+        }
     }
 }
 
-pub fn handle_write(fd: i32, data: &Vec<u8>, stream: &mut TcpStream) -> Result<(), Error> {
-    match stream.write_all("write".as_bytes()) {
-        Ok(_) => Ok(()),
+pub fn handle_write(fd: i32, data: &[u8], stream: &mut TcpStream) -> Result<(), Error> {
+    println!("Write called");
+    let result = unsafe { libc::write(fd, data.as_ptr() as *const libc::c_void, data.len()) };
+
+    if result == -1 {
+        let err = std::io::Error::last_os_error();
+        println!("Write Result {result}, errno: {err}");
+    } else {
+        println!("Write Result {result}");
+    }
+
+    match stream.write_all(format!("{}\n", result).as_bytes()) {
+        Ok(_) => {
+            println!("Write command successful");
+            Ok(())
+        }
         Err(e) => Err(format!("Unable to send message {}", e).into()),
     }
 }
@@ -51,14 +83,49 @@ pub fn handle_lseek(
     whence: i32,
     stream: &mut TcpStream,
 ) -> Result<(), Error> {
-    match stream.write_all("lseek".as_bytes()) {
+    println!("Lseek called");
+    let result = unsafe { libc::lseek(fd, offset, whence) };
+    match stream.write_all(format!("{}\n", result).as_bytes()) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Unable to send message {}", e).into()),
     }
 }
 
-pub fn handle_stat(ver: i32, path: &String, stream: &mut TcpStream) -> Result<(), Error> {
-    match stream.write_all("stat".as_bytes()) {
+pub fn handle_stat(ver: i32, path: &str, stream: &mut TcpStream) -> Result<(), Error> {
+    println!("Stat called");
+    let mut buffer: std::mem::MaybeUninit<libc::stat> = std::mem::MaybeUninit::zeroed();
+    let buf_ptr = buffer.as_mut_ptr();
+    let result = unsafe { libc::stat(path.as_ptr() as *const c_char, buf_ptr) };
+    if result == -1 {
+        match stream.write_all(format!("{}\n", result).as_bytes()) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unable to send message {}", e).into()),
+        }
+    } else {
+        let buf = unsafe {
+            format!(
+                "{},{},{},{},{},{},{}\n",
+                buffer.assume_init().st_dev as u64,
+                buffer.assume_init().st_ino,
+                buffer.assume_init().st_mode as u32,
+                buffer.assume_init().st_nlink as u64,
+                buffer.assume_init().st_uid,
+                buffer.assume_init().st_size,
+                buffer.assume_init().st_mtime,
+            )
+        };
+
+        match stream.write_all(buf.as_bytes()) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unable to send message {}", e).into()),
+        }
+    }
+}
+
+pub fn handle_unlink(path: &str, stream: &mut TcpStream) -> Result<(), Error> {
+    println!("Unlink called");
+    let result = unsafe { libc::unlink(path.as_ptr() as *mut c_char) };
+    match stream.write_all(format!("{}\n", result).as_bytes()) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Unable to send message {}", e).into()),
     }
@@ -66,32 +133,53 @@ pub fn handle_stat(ver: i32, path: &String, stream: &mut TcpStream) -> Result<()
 
 pub fn handle_getdirentries(
     fd: i32,
-    nybtes: usize,
+    nbytes: usize,
     basep: i64,
     stream: &mut TcpStream,
 ) -> Result<(), Error> {
-    match stream.write_all("getdirentries".as_bytes()) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("Unable to send message {}", e).into()),
+    println!("GetDirentries called");
+    let mut buffer = vec![0u8; super::BUFFER_SIZE];
+    let basep_ptr: *const i64 = &basep as *const i64;
+    let result = unsafe {
+        lib::getdirentries(
+            fd,
+            buffer.as_mut_ptr() as *mut c_void,
+            nbytes,
+            basep_ptr as *mut lib::off_t,
+        )
+    };
+    if result != -1 {
+        match stream.write_all(format!("{}\n", String::from_utf8(buffer).unwrap()).as_bytes()) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unable to send message {}", e).into()),
+        }
+    } else {
+        match stream.write_all("-1\n".as_bytes()) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unable to send message {}", e).into()),
+        }
     }
 }
 
-pub fn handle_getdirtree(path: &String, stream: &mut TcpStream) -> Result<(), Error> {
-    match stream.write_all("getdirtree".as_bytes()) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("Unable to send message {}", e).into()),
+pub fn handle_getdirtree(path: &str, stream: &mut TcpStream) -> Result<(), Error> {
+    println!("GetDirtree called");
+    let tree = DirTreeNodes::getdirtree(path.to_string());
+    if tree.is_err() {
+        match stream.write_all("-1\n".as_bytes()) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unable to send message {}", e).into()),
+        }
+    } else {
+        match stream.write_all(format!("{}\n", tree.unwrap()).as_bytes()) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unable to send message {}", e).into()),
+        }
     }
 }
 
 pub fn handle_default(stream: &mut TcpStream) -> Result<(), Error> {
-    match stream.write_all("Unkown ".as_bytes()) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("Unable to send message {}", e).into()),
-    }
-}
-
-pub fn handle_unlink(var: i32, path: &String, stream: &mut TcpStream) -> Result<(), Error> {
-    match stream.write_all("unlink".as_bytes()) {
+    println!("Unknown called");
+    match stream.write_all("-1\n".as_bytes()) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Unable to send message {}", e).into()),
     }
