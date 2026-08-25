@@ -4,11 +4,15 @@ use std::{
 };
 
 mod dirtreenode;
-mod lib;
+mod getdirentries;
 mod request;
 mod threadpool;
 use crate::{request::Request, threadpool::Threadpool};
 pub type Error = Box<dyn std::error::Error>;
+
+fn check_if_poisoned(pool: &Threadpool) {
+	
+}
 
 fn main() {
     // println!("Starting server.....");

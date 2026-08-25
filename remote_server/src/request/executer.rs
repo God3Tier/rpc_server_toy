@@ -2,7 +2,7 @@ use std::{io::Write, net::TcpStream};
 
 use libc::{c_char, c_void};
 
-use crate::{Error, dirtreenode::DirTreeNodes, lib};
+use crate::{Error, dirtreenode::DirTreeNodes, getdirentries};
 
 pub fn handle_open(path: &str, flags: i32, stream: &mut TcpStream) -> Result<(), Error> {
     println!("Open called");
@@ -141,11 +141,11 @@ pub fn handle_getdirentries(
     let mut buffer = vec![0u8; super::BUFFER_SIZE];
     let basep_ptr: *const i64 = &basep as *const i64;
     let result = unsafe {
-        lib::getdirentries(
+        getdirentries::getdirentries(
             fd,
             buffer.as_mut_ptr() as *mut c_void,
             nbytes,
-            basep_ptr as *mut lib::off_t,
+            basep_ptr as *mut getdirentries::off_t,
         )
     };
     if result != -1 {
