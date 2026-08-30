@@ -8,12 +8,15 @@ mod getdirentries;
 mod request;
 mod threadpool;
 use crate::{request::Request, threadpool::Threadpool};
+
 pub type Error = Box<dyn std::error::Error>;
+const SERVER_ADDRESS: &str = "0.0.0.0";
+const PORT: u16 = 15440;
 
 fn main() {
     // println!("Starting server.....");
     let pool = Threadpool::new(4);
-    let listener = TcpListener::bind(("0.0.0.0", 15440)).unwrap();
+    let listener = TcpListener::bind((SERVER_ADDRESS, PORT)).unwrap();
     // println!("Successfully started server");
     for stream in listener.incoming() {
         // println!("Incoming listener");
@@ -34,12 +37,13 @@ fn handle_connections(stream: Result<TcpStream, std::io::Error>) {
 
     loop {
         // println!("Generating request");
-        let request = Request::new(&mut stream);
+        let request = Request::parse_from_stream(&mut stream);
 
         // println!("Checking request");
         if request.is_err() {
-        	eprintln!("Request error {:?}", request); 
+            eprintln!("Request error {:?}", request);
             // Remove this unwrap
+            #[allow(unused)]
             stream
                 .write_all(format!("invalid request {}", request.err().unwrap()).as_bytes())
                 .map_err(|err| eprintln!("Unable to write invaid to server {err}"));
@@ -56,6 +60,7 @@ fn handle_connections(stream: Result<TcpStream, std::io::Error>) {
         match request.execute(&mut stream) {
             Err(e) => {
                 println!("Unable to write to client {e}");
+                #[allow(unused)]
                 stream
                     .write_all(format!("invalid request {}", e).as_bytes())
                     .map_err(|err| println!("Unable to write invalid request to server {err}"));
@@ -66,6 +71,7 @@ fn handle_connections(stream: Result<TcpStream, std::io::Error>) {
         }
     }
     // println!("Loop broken");
+    #[allow(unused)]
     stream
         .shutdown(std::net::Shutdown::Both)
         .map_err(|err| eprintln!("Unable to shutdown {err}"));

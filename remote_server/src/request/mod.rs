@@ -5,7 +5,7 @@ mod executer;
 use crate::Error;
 
 const BUFFER_SIZE: usize = 2 * 1024;
-const SPACE_ASCII: u8 = 32; 
+const SPACE_ASCII: u8 = 32;
 
 pub enum Request {
     Open { path: String, flags: i32 },
@@ -27,7 +27,7 @@ pub enum Request {
 }
 
 impl Request {
-    pub fn new(stream: &mut TcpStream) -> Result<Request, Error> {
+    pub fn parse_from_stream(stream: &mut TcpStream) -> Result<Request, Error> {
         let mut raw_bytes = vec![0u8; BUFFER_SIZE];
         // println!("Reading request");
         match stream.read(&mut raw_bytes) {
@@ -104,10 +104,15 @@ impl Request {
                             return Err("Invalid file descriptor".into());
                         }
 
+                        if args.len() < 2 {
+                        	return Err("Nothing to write".into())
+                        }
+                        
                         let mut data = Vec::new();
-                        for i in 2..args.len() {
+                        data.extend_from_slice(args[2].take().unwrap().as_bytes());
+                        for i in 3..args.len() {
+                            data.push(SPACE_ASCII);
                             data.extend_from_slice(args[i].take().unwrap().as_bytes());
-                            data.push(SPACE_ASCII); 
                         }
 
                         Ok(Request::Write {
@@ -217,10 +222,12 @@ impl Request {
     }
 
     pub fn is_shutdown(&self) -> bool {
+        #[allow(unused)]
         return matches!(self, Request::Shutdown);
     }
 }
 
+#[allow(unused)]
 impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let command = match self {
