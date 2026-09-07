@@ -37,13 +37,14 @@ services:
     container_name: rpc-client
     depends_on:
       - server
+      - proxy-server
     networks:
       - rpc-net
     environment:
       # Must be a literal dotted-decimal IP, matching server's fixed
       # address above -- your client reads this straight into
       # std.net.Address.parseIp4, which does not resolve hostnames.
-      - server15440=172.28.0.11
+      - server15440=172.28.0.10
       - serverport15440=15440
     # Overridden per test run; see docker/client/run.sh
     command: ["sleep", "infinity"]
@@ -55,6 +56,7 @@ services:
     container_name: rpc-mock
     depends_on:
       - server
+      - proxy-server
     networks:
       - rpc-net
     environment:

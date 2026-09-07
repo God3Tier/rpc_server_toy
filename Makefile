@@ -15,8 +15,8 @@ build-client:
 build-server:
 	docker compose build server
 
-build-cache: 
-	docker compose build c
+build-proxy: 
+	docker compose build proxy-server
 
 # Force a clean rebuild, bypassing layer cache -- useful when a Dockerfile
 # change (e.g. an apt-get install line) doesn't seem to take effect.
@@ -37,7 +37,13 @@ proxy-server:
 	
 # Show server logs, following.
 logs:
-	docker compose logs -f server
+	docker compose logs -f server proxy-server
+
+proxy-logs: 
+	docker compose logs -f proxy-server
+
+server-logs: 
+	docker compose logs -f server proxy-server
 
 # ctypes-based test that calls the compiled mylib.so directly, exercising
 # the real client code path. Uses tee so output is visible live AND saved.
@@ -45,9 +51,21 @@ test-ctypes:
 	docker compose run --rm client python3 ctypes_test.py 2>&1 | tee output.log
 
 #
+reset-all-server:
+	docker compose build --no-cache server
+	docker compose up -d --force-recreate server
+	docker compose build --no-cache proxy-server
+	docker compose up -d --force-recreate proxy-server
+	
 reset-server:
 	docker compose build --no-cache server
 	docker compose up -d --force-recreate server
+
+reset-proxy-server:
+	docker compose build --no-cache server
+	docker compose up -d --force-recreate server
+	docker compose build --no-cache proxy-server
+	docker compose up -d --force-recreate proxy-server
 
 # Stop and remove all containers, networks (keeps built images).
 down:

@@ -25,7 +25,7 @@ struct File {
 }
 
 pub struct User {
-	#[allow(unused)]
+    #[allow(unused)]
     client_id: i32,
     file_opened: Vec<File>,
 }
@@ -100,16 +100,17 @@ async fn handle_listener(
                         let value = cache_lock.read_file(fd, count as u32, file_name).await;
                         drop(cache_lock);
 
-                        if let Ok(data) = value {
+                        if let Ok(mut data) = value {
+                            data.push(b'\n');
                             write_to_server(&data, Arc::clone(&writer_stream)).await;
                         } else {
                             eprintln!("Unable to read because: {}", value.err().unwrap());
-                            write_to_server("-1".as_bytes(), Arc::clone(&writer_stream)).await;
+                            write_to_server("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                         }
                     } else {
                         eprintln!("FD not found");
                     }
-                    write_to_server("-1".as_bytes(), Arc::clone(&writer_stream)).await;
+                    write_to_server("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                 }
                 /*
                  * Here, we clone the file name reference. This is because it can get quite problematic if we await accross a lock
@@ -139,9 +140,9 @@ async fn handle_listener(
                         cache_lock.write_file(fd, data, appendable, file_name);
                         drop(cache_lock);
 
-                        write_to_server("1".as_bytes(), Arc::clone(&writer_stream)).await;
+                        write_to_server("1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                     } else {
-                        write_to_server("-1".as_bytes(), Arc::clone(&writer_stream)).await;
+                        write_to_server("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                     }
                 }
                 _ => {
@@ -220,5 +221,5 @@ async fn handle_sender(
         sleep(Duration::from_millis(2)).await;
     }
 
-    drop(listener_stream); 
+    drop(listener_stream);
 }
