@@ -15,17 +15,26 @@ build-client:
 build-server:
 	docker compose build server
 
+build-cache: 
+	docker compose build c
+
 # Force a clean rebuild, bypassing layer cache -- useful when a Dockerfile
 # change (e.g. an apt-get install line) doesn't seem to take effect.
 rebuild:
 	docker compose build --no-cache
 
 # Start the server in the background and leave it running.
-up: server
+up: all-server
+
+all-server:
+	docker compose up -d server proxy-server
 
 server:
-	docker compose up -d server
+	docker compose up -d server 
 
+proxy-server:
+	docker compose up -d proxy-server
+	
 # Show server logs, following.
 logs:
 	docker compose logs -f server

@@ -41,7 +41,10 @@ pub fn handle_read(fd: i32, count: usize, stream: &mut TcpStream) -> Result<(), 
     let mut buffer = vec![0u8; super::BUFFER_SIZE];
     let ptr = buffer.as_mut_ptr() as *mut libc::c_void;
     let result = unsafe { libc::read(fd, ptr, count) };
-    println!("Read result {:?}", String::from_utf8(buffer.clone()[0..count].into())); 
+    println!(
+        "Read result {:?}",
+        String::from_utf8(buffer.clone()[0..count].into())
+    );
     if result == -1 {
         let err = std::io::Error::last_os_error();
         println!("errno: {err}");
@@ -164,17 +167,18 @@ pub fn handle_getdirentries(
 pub fn handle_getdirtree(path: &str, stream: &mut TcpStream) -> Result<(), Error> {
     println!("GetDirtree called");
     let tree = DirTreeNodes::getdirtree(path.to_string());
-    if tree.is_err() {
-        match stream.write_all("-1\n".as_bytes()) {
+    if let Ok(tree) = tree {
+        match stream.write_all(format!("{}\n", tree).as_bytes()) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Unable to send message {}", e).into()),
         }
     } else {
-        match stream.write_all(format!("{}\n", tree.unwrap()).as_bytes()) {
+        match stream.write_all("-1\n".as_bytes()) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Unable to send message {}", e).into()),
         }
     }
+
 }
 
 pub fn handle_default(stream: &mut TcpStream) -> Result<(), Error> {
