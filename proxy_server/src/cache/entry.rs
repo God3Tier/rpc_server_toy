@@ -26,7 +26,7 @@ use std::time::{Duration, SystemTime};
 
 const O_RDONLY: i32 = 0;
 const O_WRITELY: i32 = 1;
-const O_RDWR: i32 = 2;
+// const O_RDWR: i32 = 2;
 
 #[derive(Eq, PartialEq)]
 pub struct Entry {
@@ -89,6 +89,8 @@ impl Entry {
             let response = response.unwrap();
             self.read_count = response.len() as u32;
             self.data = response[0..response.len() - 1].into();
+
+            #[allow(unused)]
             close_server_request(fd)
                 .await
                 .map_err(|err| eprintln!("Server leaking!!! Unable to cloase because {}", err));
@@ -131,7 +133,7 @@ impl Entry {
             if response < -1 {
                 return Err("Unable to flush dirty cash".into());
             }
-
+            #[allow(unused)]
             close_server_request(fd)
                 .await
                 .map_err(|err| eprintln!("Server leaking!!! Unable to cloase because {}", err));

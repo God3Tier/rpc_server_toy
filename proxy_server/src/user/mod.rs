@@ -6,14 +6,14 @@
  */
 
 use crate::{cache::Cache, client, request::Request};
+use futures::FutureExt;
 use std::{collections::HashMap, future::poll_fn, sync::Arc};
-use futures::FutureExt; 
 use tokio::{
     io::ReadBuf,
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
     sync::{Mutex, RwLock, mpsc},
-    time::{Duration, sleep}
+    time::{Duration, sleep},
 };
 
 const BUFFER_SIZE: usize = 2 * 1024;
@@ -25,8 +25,8 @@ struct File {
 }
 
 pub struct User {
+	#[allow(unused)]
     client_id: i32,
-    stream: Arc<Mutex<TcpStream>>,
     file_opened: Vec<File>,
 }
 
@@ -42,7 +42,6 @@ impl User {
 
         let new_user = Arc::new(RwLock::new(User {
             client_id,
-            stream,
             file_opened: Vec::new(),
         }));
 
@@ -85,8 +84,8 @@ async fn handle_listener(
                 }
                 /*
                  * Here, we clone the file name reference. This is because it can get quite problematic if we await accross a lock
-                 * I rather take the acceptable clone process than a potential freeze (and not allowing new file entries) because 
-                 * the hashmap is still locked. 
+                 * I rather take the acceptable clone process than a potential freeze (and not allowing new file entries) because
+                 * the hashmap is still locked.
                  */
                 Request::Read { fd, count } => {
                     let file_name = {
@@ -114,8 +113,8 @@ async fn handle_listener(
                 }
                 /*
                  * Here, we clone the file name reference. This is because it can get quite problematic if we await accross a lock
-                 * I rather take the acceptable clone process than a potential freeze (and not allowing new file entries) because 
-                 * the hashmap is still locked. 
+                 * I rather take the acceptable clone process than a potential freeze (and not allowing new file entries) because
+                 * the hashmap is still locked.
                  */
                 Request::Write { fd, data } => {
                     let file_name = {
@@ -124,7 +123,7 @@ async fn handle_listener(
                         drop(path_mapper_read);
                         res
                     };
-                    
+
                     if let Some(file_name) = file_name {
                         let mut appendable = false;
                         let read_lock_user = write_user.read().await;
@@ -159,7 +158,6 @@ async fn handle_listener(
             }
         }
     }
-    sleep(Duration::from_millis(2)).await;
 }
 
 async fn write_to_server(buffer: &[u8], writer_stream: Arc<Mutex<TcpStream>>) {
@@ -212,13 +210,15 @@ async fn handle_sender(
                 }
                 Some(Err(e)) => {
                     eprintln!("Err found {e}")
-                }, 
+                }
                 None => {
-                	println!("Nothing to read"); 
+                    println!("Nothing to read");
                 }
             }
-
-            
         }
+
+        sleep(Duration::from_millis(2)).await;
     }
+
+    drop(listener_stream); 
 }

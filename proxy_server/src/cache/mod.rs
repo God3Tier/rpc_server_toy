@@ -109,6 +109,8 @@ impl Cache {
         }
         self.unlink(indx);
         self.free_indx.push_back(indx);
+
+        #[allow(unused)]
         self.list[indx]
             .value
             .flush_dirty_bit()

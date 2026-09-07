@@ -110,6 +110,8 @@ impl Request {
                         
                         let mut data = Vec::new();
                         data.extend_from_slice(args[2].take().unwrap().as_bytes());
+
+                        #[allow(needless_range_loop)]
                         for i in 3..args.len() {
                             data.push(SPACE_ASCII);
                             data.extend_from_slice(args[i].take().unwrap().as_bytes());
