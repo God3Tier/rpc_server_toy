@@ -37,7 +37,7 @@ impl Request {
             }
             Ok(n) => {
                 let value_string = String::from_utf8(raw_bytes[0..n].into()).unwrap();
-                println!("Value string: {value_string}");
+                println!("(Value string: {value_string})");
                 let mut args: Vec<Option<String>> = value_string
                     .split(" ")
                     .map(|a| Some(a.to_string()))
@@ -45,7 +45,7 @@ impl Request {
                 if args[0].is_none() {
                     return Ok(Request::Default);
                 }
-                let opcode = args[0].take().unwrap().to_ascii_uppercase();
+                let opcode =  unsafe {args.get_unchecked_mut(0)}.take().unwrap().to_ascii_uppercase();
 
                 if args.len() <= 1 {
                     return Err("Insufficient arguments".into());
@@ -53,15 +53,17 @@ impl Request {
 
                 match opcode.as_str() {
                     "OPEN" => {
-                        let path = args[1].take().unwrap();
+                        let path =  unsafe {args.get_unchecked_mut(1)}.take().unwrap();
 
                         if args.len() < 2 {
                             return Ok(Request::Open { path, flags: 0 });
                         }
 
-                        let flag = args[2].take().unwrap().parse();
+                        let flag =  unsafe {args.get_unchecked_mut(2)}.take().unwrap().parse();
                         if flag.is_err() {
-                            return Err("Invalid flag value".into());
+                            return Err(
+                                format!("Invalid flag value {}", flag.err().unwrap()).into()
+                            );
                         }
                         Ok(Request::Open {
                             path,
@@ -69,7 +71,7 @@ impl Request {
                         })
                     }
                     "CLOSE" => {
-                        let fd = args[1].take().unwrap().parse();
+                        let fd =  unsafe {args.get_unchecked_mut(1)}.take().unwrap().parse();
 
                         if fd.is_err() {
                             return Err("invalid file descriptor".into());
@@ -80,13 +82,13 @@ impl Request {
                         if args.len() < 2 {
                             return Err("Not enough arguments".into());
                         }
-                        let fd = args[1].take().unwrap().parse();
+                        let fd =  unsafe {args.get_unchecked_mut(1)}.take().unwrap().parse();
 
                         if fd.is_err() {
                             return Err("invalid file descriptor".into());
                         }
 
-                        let count = args[2].take().unwrap().parse();
+                        let count = unsafe {args.get_unchecked_mut(2)}.take().unwrap().parse();
 
                         if count.is_err() {
                             return Err("invalid count".into());
@@ -98,23 +100,23 @@ impl Request {
                         })
                     }
                     "WRITE" => {
-                        let fd = args[1].take().unwrap().parse();
+                        let fd =  unsafe {args.get_unchecked_mut(1)}.take().unwrap().parse();
 
                         if fd.is_err() {
                             return Err("Invalid file descriptor".into());
                         }
 
                         if args.len() < 2 {
-                        	return Err("Nothing to write".into())
+                            return Err("Nothing to write".into());
                         }
-                        
+
                         let mut data = Vec::new();
-                        data.extend_from_slice(args[2].take().unwrap().as_bytes());
+                        data.extend_from_slice( unsafe {args.get_unchecked_mut(2)}.take().unwrap().as_bytes());
 
                         #[allow(needless_range_loop)]
                         for i in 3..args.len() {
                             data.push(SPACE_ASCII);
-                            data.extend_from_slice(args[i].take().unwrap().as_bytes());
+                            data.extend_from_slice( unsafe {args.get_unchecked_mut(i)}.take().unwrap().as_bytes());
                         }
 
                         Ok(Request::Write {
@@ -127,19 +129,19 @@ impl Request {
                         if args.len() < 3 {
                             return Err("Not enough arguments".into());
                         }
-                        let fd = args[1].take().unwrap().parse();
+                        let fd =  unsafe {args.get_unchecked_mut(1)}.take().unwrap().parse();
 
                         if fd.is_err() {
                             return Err("Invalid file descriptor".into());
                         }
 
-                        let offset = args[2].take().unwrap().parse();
+                        let offset =  unsafe {args.get_unchecked_mut(2)}.take().unwrap().parse();
 
                         if offset.is_err() {
                             return Err("Invalid file descriptor".into());
                         }
 
-                        let whence = args[3].take().unwrap().parse();
+                        let whence =  unsafe {args.get_unchecked_mut(3)}.take().unwrap().parse();
 
                         Ok(Request::Lseek {
                             fd: fd.unwrap(),
@@ -152,36 +154,36 @@ impl Request {
                             return Err("Not enough arguments".into());
                         }
 
-                        let ver = args[1].take().unwrap().parse();
+                        let ver = unsafe {args.get_unchecked_mut(1)}.take().unwrap().parse();
                         if ver.is_err() {
                             return Err("Version not found".into());
                         }
 
-                        let path = args[2].take().unwrap();
+                        let path =  unsafe {args.get_unchecked_mut(2)}.take().unwrap();
                         Ok(Request::Stat {
                             ver: ver.unwrap(),
                             path,
                         })
                     }
                     "UNLINK" => Ok(Request::Unlink {
-                        path: args[1].take().unwrap(),
+                        path:  unsafe {args.get_unchecked_mut(1)}.take().unwrap(),
                     }),
                     "GETDIRENTRIES" => {
                         if args.len() < 4 {
                             return Err("Not enough arguments".into());
                         }
-                        let fd = args[1].take().unwrap().parse();
+                        let fd =  unsafe {args.get_unchecked_mut(1)}.take().unwrap().parse();
 
                         if fd.is_err() {
                             return Err("Invalid file descriptor".into());
                         }
 
-                        let nbytes = args[2].take().unwrap().parse();
+                        let nbytes =  unsafe {args.get_unchecked_mut(2)}.take().unwrap().parse();
 
                         if nbytes.is_err() {
                             return Err("Invalid file descriptor".into());
                         }
-                        let basep = args[3].take().unwrap().parse();
+                        let basep =  unsafe {args.get_unchecked_mut(3)}.take().unwrap().parse();
 
                         if basep.is_err() {
                             return Err("Invalid file descriptor".into());
@@ -194,7 +196,7 @@ impl Request {
                         })
                     }
                     "GETDIRTREE" => Ok(Request::GetDirtree {
-                        path: args[1].take().unwrap(),
+                        path:  unsafe {args.get_unchecked_mut(1)}.take().unwrap(),
                     }),
                     _ => Ok(Request::Default),
                 }

@@ -7,7 +7,7 @@
 
 use crate::{cache::Cache, client, request::Request};
 use futures::FutureExt;
-use std::{collections::HashMap, future::poll_fn, sync::Arc};
+use std::{future::poll_fn, sync::Arc};
 use tokio::{
     io::ReadBuf,
     io::{AsyncReadExt, AsyncWriteExt},
@@ -34,7 +34,7 @@ impl User {
     pub fn new(
         client_id: i32,
         stream: Arc<Mutex<TcpStream>>,
-        path_mapper: Arc<RwLock<HashMap<i32, String>>>,
+        path_mapper: Arc<RwLock<Vec<String>>>,
         cache: Arc<Mutex<Cache>>,
     ) -> Arc<RwLock<User>> {
         let listener_stream = Arc::clone(&stream);
@@ -62,25 +62,48 @@ async fn handle_listener(
     writer_stream: Arc<Mutex<TcpStream>>,
     mut rx: mpsc::Receiver<String>,
     write_user: Arc<RwLock<User>>,
-    path_mapper: Arc<RwLock<HashMap<i32, String>>>,
+    path_mapper: Arc<RwLock<Vec<String>>>,
     cache: Arc<Mutex<Cache>>,
 ) {
     while let Some(message) = rx.recv().await {
+        println!("Received message {message}");
         match Request::new(&message) {
             Ok(request) => match request {
                 Request::Open { path, flags } => {
-                    let mut cache_lock = cache.lock().await;
-                    let fd = cache_lock.generate_fd();
-                    drop(cache_lock);
+                    let mut fd = -1;
+
+                    let path_mapper_read = path_mapper.read().await;
+                    for (indx, path_present) in path_mapper_read.iter().enumerate() {
+                        if path_present == path {
+                            fd = indx as i32;
+                            break;
+                        }
+                    }
+                    drop(path_mapper_read);
+
+                    if fd == -1 {
+                        let mut cache_lock = cache.lock().await;
+                        fd = cache_lock.generate_fd();
+                        drop(cache_lock);
+                    }
 
                     let mut user_lock = write_user.write().await;
                     user_lock.file_opened.push(File { fd, flags });
                     drop(user_lock);
+
                     let mut path_mapper_write = path_mapper.write().await;
-                    path_mapper_write.insert(fd, path.to_string());
+                    while fd >= path_mapper_write.len() as i32 {
+                        path_mapper_write.push(String::from("UNINIT"))
+                    }
+
+                    unsafe {
+                        let pointer = path_mapper_write.get_unchecked_mut(fd as usize);
+                        *pointer = path.to_string()
+                    }
+
                     drop(path_mapper_write);
 
-                    write_to_server("-1".as_bytes(), Arc::clone(&writer_stream)).await;
+                    write_to_client(format!("{fd}\n").as_bytes(), Arc::clone(&writer_stream)).await;
                 }
                 /*
                  * Here, we clone the file name reference. This is because it can get quite problematic if we await accross a lock
@@ -90,27 +113,25 @@ async fn handle_listener(
                 Request::Read { fd, count } => {
                     let file_name = {
                         let path_mapper_read = path_mapper.read().await;
-                        let res = path_mapper_read.get(&fd).cloned();
+                        let res = unsafe { path_mapper_read.get_unchecked(fd as usize) }.clone();
                         drop(path_mapper_read);
                         res
                     };
 
-                    if let Some(file_name) = file_name {
-                        let mut cache_lock = cache.lock().await;
-                        let value = cache_lock.read_file(fd, count as u32, file_name).await;
-                        drop(cache_lock);
+                    let mut cache_lock = cache.lock().await;
+                    let value = cache_lock.read_file(fd, count as u32, file_name).await;
+                    drop(cache_lock);
 
-                        if let Ok(mut data) = value {
-                            data.push(b'\n');
-                            write_to_server(&data, Arc::clone(&writer_stream)).await;
-                        } else {
-                            eprintln!("Unable to read because: {}", value.err().unwrap());
-                            write_to_server("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
-                        }
+                    if let Ok(data) = value {
+                        // data.push(b'\n');
+                        // println!("Data to client: {:?}", data);
+                        write_to_client(&data, Arc::clone(&writer_stream)).await;
                     } else {
-                        eprintln!("FD not found");
+                        eprintln!("Unable to read because: {}", value.err().unwrap());
+                        write_to_client("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                     }
-                    write_to_server("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
+
+                    write_to_client("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                 }
                 /*
                  * Here, we clone the file name reference. This is because it can get quite problematic if we await accross a lock
@@ -118,40 +139,59 @@ async fn handle_listener(
                  * the hashmap is still locked.
                  */
                 Request::Write { fd, data } => {
+                    let length = data.len();
                     let file_name = {
                         let path_mapper_read = path_mapper.read().await;
-                        let res = path_mapper_read.get(&fd).cloned();
+                        let res = unsafe { path_mapper_read.get_unchecked(fd as usize) }.clone();
                         drop(path_mapper_read);
                         res
                     };
-
-                    if let Some(file_name) = file_name {
-                        let mut appendable = false;
-                        let read_lock_user = write_user.read().await;
-                        let files = &read_lock_user.file_opened;
-                        for file in files {
-                            if fd == file.fd {
-                                appendable = file.flags & O_APPEND != 0;
-                                break;
-                            }
+                    let mut appendable = false;
+                    let read_lock_user = write_user.read().await;
+                    let files = &read_lock_user.file_opened;
+                    for file in files {
+                        if fd == file.fd {
+                            appendable = file.flags & O_APPEND != 0;
+                            break;
                         }
-                        drop(read_lock_user);
-                        let mut cache_lock = cache.lock().await;
-                        cache_lock.write_file(fd, data, appendable, file_name);
-                        drop(cache_lock);
+                    }
+                    drop(read_lock_user);
+                    let mut cache_lock = cache.lock().await;
+                    cache_lock.write_file(fd, data, appendable, file_name).await;
+                    drop(cache_lock);
 
-                        write_to_server("1\n".as_bytes(), Arc::clone(&writer_stream)).await;
+                    write_to_client(
+                        format!("{}\n", length).as_bytes(),
+                        Arc::clone(&writer_stream),
+                    )
+                    .await;
+                }
+                Request::Close { fd } => {
+                    let read_user_lock = write_user.read().await;
+                    let indx_remove = read_user_lock.file_opened.iter().position(|x| x.fd == fd);
+                    drop(read_user_lock);
+
+                    let mut success = false;
+                    let mut write_user_lock = write_user.write().await;
+                    if let Some(indx) = indx_remove {
+                        write_user_lock.file_opened.remove(indx);
+                        success = true;
+                    }
+                    drop(write_user_lock);
+                    if success {
+                        write_to_client("1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                     } else {
-                        write_to_server("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
+                        write_to_client("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                     }
                 }
                 _ => {
+                    println!("Default call");
                     let result = client::request_from_server(request).await;
                     if result.is_err() {
                         eprintln!("Unable to write request to main server",)
                     }
                     let result = result.unwrap();
-                    write_to_server(&result, Arc::clone(&writer_stream)).await;
+                    write_to_client(&result, Arc::clone(&writer_stream)).await;
                 }
             },
             Err(e) => {
@@ -161,7 +201,7 @@ async fn handle_listener(
     }
 }
 
-async fn write_to_server(buffer: &[u8], writer_stream: Arc<Mutex<TcpStream>>) {
+async fn write_to_client(buffer: &[u8], writer_stream: Arc<Mutex<TcpStream>>) {
     let mut writer = writer_stream.lock().await;
     if let Err(e) = writer.write_all(buffer).await {
         eprintln!("Error: Unable to write to client {e}")
@@ -184,21 +224,25 @@ async fn handle_sender(
                     break;
                 }
                 Some(Ok(n)) => {
-                    let data = buf.filled();
-                    println!("Peeked: {:?}", data);
+                    // let data = buf.filled();
+                    // println!("Peeked: {:?}", data);
 
                     // Now consume the bytes.
                     let mut consume_buf = vec![0u8; n];
-
-                    match stream.read_exact(&mut consume_buf).await {
+                    // println!("Attempting to read bytes");
+                    match stream.read(&mut consume_buf).await {
                         Ok(_) => {
+                            // println!("Consuming buffer");
                             let value = String::from_utf8(consume_buf);
                             if value.is_err() {
                                 eprintln!("Invalid string error for {}", value.err().unwrap());
                                 continue;
                             }
 
-                            if let Err(e) = rx.send(value.unwrap()).await {
+                            let value = value.unwrap();
+                            println!("Message sending: {}", value);
+                            // println!("Sending message to receiver");
+                            if let Err(e) = rx.send(value).await {
                                 eprintln!("Unable to send message :{e}")
                             }
                             // Move and send some sort of message of receiver to other side to handle
@@ -213,7 +257,7 @@ async fn handle_sender(
                     eprintln!("Err found {e}")
                 }
                 None => {
-                    println!("Nothing to read");
+                    // println!("Nothing to read");
                 }
             }
         }

@@ -26,9 +26,10 @@ use std::time::{Duration, SystemTime};
 
 const O_RDONLY: i32 = 0;
 const O_WRITELY: i32 = 1;
+const O_CREATLY: i32 = 64;
 // const O_RDWR: i32 = 2;
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Debug)]
 pub struct Entry {
     pub file_name: String,
     last_requested: SystemTime,
@@ -56,6 +57,7 @@ impl Entry {
             self.read_count = data.len() as u32;
             self.data = data;
         }
+        println!("Successfully wrote to cache\n  Dirty Bit: {}", self.dirty_bit);
     }
 
     pub fn read_data(&self, read_count: u32) -> Option<Vec<u8>> {
@@ -69,10 +71,11 @@ impl Entry {
     }
 
     pub async fn fetch_read(&mut self, read_count: u32) -> Result<Vec<u8>, Error> {
+        println!("Fetch reading from server\n Dirty Bit: {}", self.dirty_bit);
         if self.dirty_bit {
             // Here, I will overwrite all present data (dont care whether append that one is too complex alr)
+            println!("Flushing dirty bit");
             self.flush_dirty_bit().await?;
-            self.dirty_bit = false;
         }
         let open = open_server_request(&self.file_name, O_RDONLY).await;
         if let Ok(fd) = open {
@@ -136,7 +139,7 @@ impl Entry {
             #[allow(unused)]
             close_server_request(fd)
                 .await
-                .map_err(|err| eprintln!("Server leaking!!! Unable to cloase because {}", err));
+                .map_err(|err| eprintln!("Server leaking!!! Unable to close because {}", err));
             self.dirty_bit = false;
         }
         Ok(())
@@ -156,6 +159,17 @@ impl Entry {
     }
 }
 
+impl Drop for Entry {
+	fn drop(&mut self) {
+		println!("Entry being dropped: {}", self.file_name)
+	}
+}
+
+/*
+ * Helper functions to help generically open and close the file within the remote_server itsef
+ * Close server -> Close with whatever fd was provided
+ * Open -> Open with whatever file_name was provided
+ */
 async fn close_server_request(fd: i32) -> Result<i32, Error> {
     let close_request = Request::Close { fd };
 
@@ -189,7 +203,7 @@ async fn close_server_request(fd: i32) -> Result<i32, Error> {
 async fn open_server_request(file_name: &str, flags: i32) -> Result<i32, Error> {
     let open_request = Request::Open {
         path: file_name,
-        flags,
+        flags: flags | O_CREATLY,
     };
 
     let response = client::request_from_server(open_request).await;

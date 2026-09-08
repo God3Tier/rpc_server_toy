@@ -53,7 +53,8 @@ pub fn handle_read(fd: i32, count: usize, stream: &mut TcpStream) -> Result<(), 
             Err(e) => Err(format!("Unable to send message {}", e).into()),
         }
     } else {
-        match stream.write_all(&buffer[0..count]) {
+        buffer[count] = b'\n';
+        match stream.write_all(&buffer[0..count + 1]) {
             Ok(_) => Ok(()),
             Err(e) => Err(format!("Unable to send message {}", e).into()),
         }
@@ -178,7 +179,6 @@ pub fn handle_getdirtree(path: &str, stream: &mut TcpStream) -> Result<(), Error
             Err(e) => Err(format!("Unable to send message {}", e).into()),
         }
     }
-
 }
 
 pub fn handle_default(stream: &mut TcpStream) -> Result<(), Error> {

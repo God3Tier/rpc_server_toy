@@ -1,7 +1,7 @@
 FROM rust:1-slim AS build
 WORKDIR /build/proxy_server
 COPY proxy_server/Cargo.toml proxy_server/Cargo.lock ./
-COPY proxy_serer/src ./src
+COPY proxy_server/src ./src
 RUN cargo build --release
 
 FROM debian:bookworm-slim

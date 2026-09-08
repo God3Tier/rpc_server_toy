@@ -2,7 +2,7 @@ services:
   proxy-server:
     build:
       context: .
-      dockerfile: remote_server/Dockerfile
+      dockerfile: proxy_server/Dockerfile
     container_name: proxy-server
     networks:
       rpc-net:
