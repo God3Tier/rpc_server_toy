@@ -49,6 +49,7 @@ impl Entry {
         }
     }
     pub fn write_data(&mut self, data: Vec<u8>, append: bool) {
+        let data: Vec<u8> = data.into_iter().filter(|&x| x != b'\0').collect();
         self.dirty_bit = true;
         if append {
             self.read_count += data.len() as u32;
@@ -57,7 +58,10 @@ impl Entry {
             self.read_count = data.len() as u32;
             self.data = data;
         }
-        println!("Successfully wrote to cache\n  Dirty Bit: {}", self.dirty_bit);
+        println!(
+            "Successfully wrote to cache\n  Dirty Bit: {}",
+            self.dirty_bit
+        );
     }
 
     pub fn read_data(&self, read_count: u32) -> Option<Vec<u8>> {
@@ -89,9 +93,18 @@ impl Entry {
                 return Err(response.err().unwrap());
             }
 
-            let response = response.unwrap();
+            /*
+             * Remove any \0 limiters here as the size will may be bigger than the actual data stored in server. This would
+             * allow me to store the data moer succintly and add the delimeter to ensure that it still works as a string upon
+             * return to client
+             */
+            let response: Vec<u8> = response
+                .unwrap()
+                .into_iter()
+                .filter(|&x| x != b'\0')
+                .collect();
             self.read_count = response.len() as u32;
-            self.data = response[0..response.len() - 1].into();
+            self.data = response;
 
             #[allow(unused)]
             close_server_request(fd)
@@ -100,7 +113,13 @@ impl Entry {
             self.last_requested = SystemTime::now();
 
             // NOTE: EXPENSIVE CLONE HERE
-            return Ok(self.data.clone());
+            // Here, I add all the ending characters needed to fufil the requirements that the exact amount of bytes
+            // must be sent back.
+            let return_value = self.data.clone();
+            for _ in self.data.len()..read_count as usize + 1 {
+                self.data.push(b'\0');
+            }
+            return Ok(return_value);
         }
 
         Err(open.err().unwrap())
@@ -160,9 +179,9 @@ impl Entry {
 }
 
 impl Drop for Entry {
-	fn drop(&mut self) {
-		println!("Entry being dropped: {}", self.file_name)
-	}
+    fn drop(&mut self) {
+        println!("Entry being dropped: {}", self.file_name)
+    }
 }
 
 /*
