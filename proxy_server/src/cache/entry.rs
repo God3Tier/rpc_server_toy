@@ -49,6 +49,7 @@ impl Entry {
         }
     }
     pub fn write_data(&mut self, data: Vec<u8>, append: bool) {
+        // println!("Writing to {}", self.file_name);
         let data: Vec<u8> = data.into_iter().filter(|&x| x != b'\0').collect();
         self.dirty_bit = true;
         if append {
@@ -58,10 +59,10 @@ impl Entry {
             self.read_count = data.len() as u32;
             self.data = data;
         }
-        println!(
-            "Successfully wrote to cache\n  Dirty Bit: {}",
-            self.dirty_bit
-        );
+        // println!(
+        //     "Successfully wrote to cache\n  Dirty Bit: {}",
+        //     self.dirty_bit
+        // );
     }
 
     pub fn read_data(&self, read_count: u32) -> Option<Vec<u8>> {
@@ -75,10 +76,10 @@ impl Entry {
     }
 
     pub async fn fetch_read(&mut self, read_count: u32) -> Result<Vec<u8>, Error> {
-        println!("Fetch reading from server\n Dirty Bit: {}", self.dirty_bit);
+        // println!("Fetch reading from server\n Dirty Bit: {}", self.dirty_bit);
         if self.dirty_bit {
             // Here, I will overwrite all present data (dont care whether append that one is too complex alr)
-            println!("Flushing dirty bit");
+            // println!("Flushing dirty bit");
             self.flush_dirty_bit().await?;
         }
         let open = open_server_request(&self.file_name, O_RDONLY).await;
@@ -177,6 +178,19 @@ impl Entry {
         time_difference >= Duration::from_hours(1)
     }
 }
+
+// TODO: Remove this clone
+// impl std::fmt::Debug for Entry {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+//         write!(
+//             f,
+//             "File_name: {}\n: Data: {:?}\n Dirty_bit: {}",
+//             self.file_name,
+//             String::from_utf8(self.data.clone()),
+//             self.dirty_bit
+//         )
+//     }
+// }
 
 impl Drop for Entry {
     fn drop(&mut self) {

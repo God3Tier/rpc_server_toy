@@ -43,6 +43,8 @@ pub const RPCClient = struct {
         try client.socket.write_to_stream(message);
         var buf_return: [1024]u8 = undefined;
         const num = try client.socket.read_from_stream(buf_return[0..1024]);
+        // std.debug.print("Close reponse: {s}\n", .{buf_return});
+        _ = try std.fmt.parseInt(i32, buf_return[0..num], 10); 
         const res = std.fmt.parseInt(i32, buf_return[0..num], 10) catch |err| {
             std.debug.print("Close Error, {} from string {s}", .{ err, buf_return });
             return -1;
@@ -62,9 +64,9 @@ pub const RPCClient = struct {
             count,
         });
         defer client.allocator.free(message);
-        
+
         try client.socket.write_to_stream(message);
-        
+
         const num = try client.socket.read_from_stream(buf[0..]);
         return @intCast(num);
     }
@@ -84,7 +86,7 @@ pub const RPCClient = struct {
             std.debug.print("Write Error, {} from string {s}", .{ err, buf_return });
             return -1;
         };
-        
+
         return res;
     }
 

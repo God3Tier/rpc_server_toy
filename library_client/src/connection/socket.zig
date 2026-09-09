@@ -20,15 +20,24 @@ pub const Socket = struct {
     fd: i32,
 
     pub fn write_to_stream(self: *Socket, data: []const u8) !void {
-        var sent: usize = 0;
-        std.debug.print("Data sent {s}\n", .{data});
-        while (sent < data.len) {
-            const rc = linux.write(self.fd, data.ptr + sent, data.len - sent);
+        // std.debug.print("Data sent {s}\n", .{data});
+        var len_buf: [32]u8 = undefined;
+
+        const len_str = try std.fmt.bufPrint(
+            &len_buf,
+            "{d} {s}",
+            .{data.len, data},
+        );
+
+        var len_sent: usize = 0;
+
+        while (len_sent < len_str.len) {
+            const rc = linux.write(self.fd, len_str.ptr + len_sent, len_str.len - len_sent);
             const n: isize = @bitCast(rc);
             if (n < 0) return error.WriteFailed;
-            sent += @intCast(n);
+            len_sent += @intCast(n);
         }
-        if (sent == 0) return error.ConnectionReset;
+        if (len_sent == 0) return error.ConnectionReset;
     }
 
     pub fn read_from_stream(self: *Socket, buf: []u8) !usize {
@@ -45,14 +54,15 @@ pub const Socket = struct {
                 break;
             }
         }
-                
+
         if (got == 0) return error.ConnectionClosed;
+        // std.debug.print("Received {s}\n", .{buf[0..got - 1]}); 
         return if (saw_newline) got - 1 else got;
     }
 
     pub fn deinit(self: *Socket) void {
         _ = linux.close(self.fd);
-        std.debug.print("Socket deinit fd={}\n", .{self.fd});
+        // std.debug.print("Socket deinit fd={}\n", .{self.fd});
     }
 };
 

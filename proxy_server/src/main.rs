@@ -68,6 +68,13 @@ async fn main() {
 
     // tokio::spawn(async move {
     loop {
+        let checker_lock = fd_to_file_name.read().await;
+        for (indx, s) in checker_lock.iter().enumerate() {
+            if s != "UNINT" {
+                println!("FD: {}, PathName: {}", indx, s);
+            }
+        }
+        drop(checker_lock); 
         match connection.accept().await {
             Ok((stream, sockaddr)) => {
                 println!("Ip addr {} has successfully connected", sockaddr);

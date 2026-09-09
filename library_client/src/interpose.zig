@@ -95,7 +95,7 @@ export fn close(fd: c_int) callconv(.c) c_int {
         if (local_result < 0) {
             std.debug.print("Unknown result from lib implementation {}\n", .{local_result});
             c.__errno_location().* = c.ENOMEM;
-            return -1;
+            // return -1;
         }
 
         _ = get_file_map().remove(fd);
@@ -108,7 +108,7 @@ export fn close(fd: c_int) callconv(.c) c_int {
             }
         }
 
-        return local_result;
+        return result;
     } else {
         std.debug.print("Unknown not found in map\n", .{});
     }

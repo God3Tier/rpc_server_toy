@@ -5,7 +5,7 @@
  * server but it will lead to me passing in permission info like a boolean. However, I do note that shutdow
  */
 
-use crate::{cache::Cache, client, request::Request};
+use crate::{Error, cache::Cache, client, request::Request};
 use futures::FutureExt;
 use std::{future::poll_fn, sync::Arc};
 use tokio::{
@@ -130,8 +130,6 @@ async fn handle_listener(
                         eprintln!("Unable to read because: {}", value.err().unwrap());
                         write_to_client("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                     }
-
-                    write_to_client("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                 }
                 /*
                  * Here, we clone the file name reference. This is because it can get quite problematic if we await accross a lock
@@ -174,13 +172,14 @@ async fn handle_listener(
                     let mut success = false;
                     let mut write_user_lock = write_user.write().await;
                     if let Some(indx) = indx_remove {
-                        write_user_lock.file_opened.remove(indx);
                         success = true;
+                        write_user_lock.file_opened.remove(indx);
                     }
                     drop(write_user_lock);
                     if success {
                         write_to_client("1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                     } else {
+                        println!("Returning unable to close for fd:{fd}");
                         write_to_client("-1\n".as_bytes(), Arc::clone(&writer_stream)).await;
                     }
                 }
@@ -230,21 +229,27 @@ async fn handle_sender(
                     // Now consume the bytes.
                     let mut consume_buf = vec![0u8; n];
                     // println!("Attempting to read bytes");
-                    match stream.read(&mut consume_buf).await {
+                    match stream.read_exact(&mut consume_buf).await {
                         Ok(_) => {
                             // println!("Consuming buffer");
-                            let value = String::from_utf8(consume_buf);
-                            if value.is_err() {
-                                eprintln!("Invalid string error for {}", value.err().unwrap());
-                                continue;
+                            let mut size_start = 0;
+                            while size_start < n {
+                                match request_parser(&consume_buf[size_start..consume_buf.len()]) {
+                                    Ok((value, next_command)) => {
+                                        println!("Message sending: {}", value);
+                                        // println!("Sending message to receiver");																								//
+                                        if let Err(e) = rx.send(value).await {
+                                            eprintln!("Unable to send message :{e}")
+                                        }
+                                        size_start += next_command + 1;
+                                    }
+                                    Err(e) => {
+                                        eprintln!("{e}");
+                                        break;
+                                    }
+                                }
                             }
 
-                            let value = value.unwrap();
-                            println!("Message sending: {}", value);
-                            // println!("Sending message to receiver");
-                            if let Err(e) = rx.send(value).await {
-                                eprintln!("Unable to send message :{e}")
-                            }
                             // Move and send some sort of message of receiver to other side to handle
                         }
                         Err(e) => {
@@ -266,4 +271,28 @@ async fn handle_sender(
     }
 
     drop(listener_stream);
+}
+
+fn request_parser(buf: &[u8]) -> Result<(String, usize), Error> {
+    println!(
+        "Consumed: {:?}",
+        buf.iter().map(|&x| x as char).collect::<Vec<char>>()
+    );
+
+    let indx_of_first_space = buf.iter().position(|&x| x == b' ');
+
+    if indx_of_first_space.is_none() {
+        return Err("Invalid command format".into());
+    }
+
+    let indx_of_first_space = indx_of_first_space.unwrap();
+
+    let size_raw = String::from_utf8(buf[0..indx_of_first_space].into())?;
+    let size: usize = size_raw.parse()?;
+    println!("{size}");
+    // Uh.....
+    let next_command = indx_of_first_space + size;
+    let value = String::from_utf8(buf[indx_of_first_space + 1..next_command + 1].into())?;
+
+    Ok((value, next_command))
 }

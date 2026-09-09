@@ -3,6 +3,8 @@ import os
 
 LIB_PATH = "./zig-client/zig-out/mylib.so"
 
+file_path = {}
+
 
 def load_lib():
     lib = ctypes.CDLL(LIB_PATH, use_errno=True)
@@ -49,20 +51,23 @@ def check_read(lib, path: bytes, count: int = 64):
     buf = ctypes.create_string_buffer(count)
     n = lib.read(fd, buf, count)
     print("read ->", n, "bytes:", buf.raw[: max(n, 0)])
-    lib.close(fd)
+    ret = lib.close(fd)
+    print("close ->", ret)
 
 
 def check_write(lib, path: bytes, data: bytes = b"hello from python\n"):
     print(f"--- write: {path!r} ---")
     fd = lib.open(path, os.O_WRONLY | os.O_CREAT)
+    file_path[fd] = path
     if fd < 0:
         print("open failed, errno:", ctypes.get_errno())
         return
-    print("Sending Write request") 
+    print("Sending Write request")
     n = lib.write(fd, data, len(data) + 1)
-    print("Received Write request") 
+    print("Received Write request")
     print("write ->", n)
-    lib.close(fd)
+    ret = lib.close(fd)
+    print("close ->", ret)
 
 
 # def check_unlink(lib, path: bytes):
@@ -83,6 +88,11 @@ if __name__ == "__main__":
 
     check_open_close(lib, b"/tmp/testfile.txt")
     # check_read(lib, b"/tmp/testfile.txt")
-    check_write(lib, b"/tmp/scratch.txt")
-    check_read(lib, b"/tmp/scratch.txt")
+    for i in range(15):
+        # i = 1;
+        check_write(
+            lib, f"/tmp/scratch{i}.txt".encode(), f"hello from pyhton{i}".encode()
+        )
+        check_read(lib, f"/tmp/scratch{i}.txt".encode())
     # check_unlink(lib, b"/tmp/scratch.txt")
+    print(file_path)

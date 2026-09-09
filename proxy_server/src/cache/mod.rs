@@ -78,7 +78,7 @@ impl Cache {
         read_count: u32,
         file_name: String,
     ) -> Result<Vec<u8>, Error> {
-        println!("State of cache: {:?}", self.list);
+        // println!("State of cache: {:?}", self.list);
         if let Some(indx) = self.get_node(fd) {
             let node_read = unsafe { self.list.get_unchecked(indx) };
             let indx = node_read.indx;
@@ -98,10 +98,10 @@ impl Cache {
             }
         }
 
-        println!("State of cache: {:?}", self.list);
+        // println!("State of cache: {:?}", self.list);
 
         // At this point in time I gurantee that it has never existed within my proxy server
-        println!("Not found in cache\n State of cache: {:?}", self.list);
+        // println!("Not found in cache\n State of cache: {:?}", self.list);
         let mut entry = Entry::new(file_name);
         let result = entry.fetch_read(read_count).await?;
         self.insert(entry, fd).await;
