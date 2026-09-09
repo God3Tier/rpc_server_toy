@@ -11,9 +11,7 @@ mod entry;
 
 use self::entry::Entry;
 use crate::Error;
-use std::{
-    collections::{HashMap, VecDeque},
-};
+use std::collections::{HashMap, VecDeque};
 
 struct Node {
     fd: i32,
@@ -191,11 +189,9 @@ impl Cache {
     fn push_front(&mut self, idx: usize) {
         let old_head = self.head;
 
-        {
-            let node = unsafe { self.list.get_unchecked_mut(idx) };
-            node.prev = None;
-            node.next = old_head;
-        }
+        let node = unsafe { self.list.get_unchecked_mut(idx) };
+        node.prev = None;
+        node.next = old_head;
 
         if let Some(h) = old_head {
             unsafe { self.list.get_unchecked_mut(h) }.prev = Some(idx);
